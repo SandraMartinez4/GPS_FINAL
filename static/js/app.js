@@ -105,6 +105,41 @@ function hasTrafficOnRoute(geometry = []) {
   }));
 }
 
+function repairRouteGeometry(route, origin, dest) {
+  if (!route?.geometry?.length || !origin || !dest) return route;
+
+  const geometry = route.geometry.map(point => [...point]);
+  const first = geometry[0];
+  const last = geometry[geometry.length - 1];
+  const startGapKm = haversineKm(first[1], first[0], origin.lat, origin.lng);
+  const endGapKm = haversineKm(last[1], last[0], dest.lat, dest.lng);
+
+  let repaired = false;
+  if (startGapKm > 1.8) {
+    geometry.unshift([origin.lng, origin.lat]);
+    repaired = true;
+  }
+  if (endGapKm > 1.8) {
+    geometry.push([dest.lng, dest.lat]);
+    repaired = true;
+  }
+
+  if (!repaired) return route;
+
+  const avgSpeedSPerKm = route.distanceM > 0 && route.durationS > 0
+    ? route.durationS / (route.distanceM / 1000)
+    : 60;
+  const extraKm = (startGapKm > 1.8 ? startGapKm : 0) + (endGapKm > 1.8 ? endGapKm : 0);
+
+  return {
+    ...route,
+    geometry,
+    distanceM: route.distanceM + extraKm * 1000,
+    durationS: route.durationS + extraKm * avgSpeedSPerKm,
+    routeRepair: true,
+  };
+}
+
 function makeIcon(emoji, color) {
   return L.divIcon({
     className: '',
@@ -738,6 +773,7 @@ document.getElementById('searchBtn').addEventListener('click', async () => {
 
       return { ...route, tolls, tollCostMin, tollCostMax, tollCostLabel, tollNote };
     });
+    allRoutes = allRoutes.map(route => repairRouteGeometry(route, originCoords, destCoords));
     allRoutes.forEach(r => { r.fuelCostFormatted = formatFuelCost(parseFloat(r.fuelL), activeFuel); });
 
     currentRoute = { main: allRoutes[0], alternatives: allRoutes.slice(1) };
