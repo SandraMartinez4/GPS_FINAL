@@ -29,6 +29,15 @@ let destMarker     = null;
 let currentRoute   = null;
 let activeFuel     = FUEL_BY_COUNTRY.MX;
 
+const TRAFFIC_SPOTS = [
+  { lat:19.4326, lng:-99.1332, r:6 },
+  { lat:20.6597, lng:-103.3496, r:5 },
+  { lat:25.6866, lng:-100.3161, r:5 },
+  { lat:19.0414, lng:-98.2063, r:4 },
+  { lat:19.6010, lng:-99.0503, r:4 },
+  { lat:19.5478, lng:-99.2014, r:3 },
+];
+
 // ===== RISK ZONES =====
 function drawRiskZones() {
   riskLayers.forEach(l => map.removeLayer(l));
@@ -56,8 +65,8 @@ function drawTollMarkers() {
   tollMarkers = [];
   const tollIcon = L.divIcon({
     className: '',
-    html: `<div style="background:#f59e0b;border:2px solid #1a1d27;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-size:7px;color:#000;font-weight:900">$</div>`,
-    iconSize: [14,14], iconAnchor: [7,7],
+    html: `<div style="width:18px;height:18px;border-radius:6px 6px 10px 10px;background:linear-gradient(180deg,#f59e0b,#d97706);border:1px solid #ffffff;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 14px rgba(217,119,6,.28);color:#fff;font-size:10px;font-weight:900;transform:rotate(-8deg)">$</div>`,
+    iconSize: [18,18], iconAnchor: [9,9],
   });
   TOLL_BOOTHS.forEach(toll => {
     const price = getTollPriceInfo(toll);
@@ -76,17 +85,24 @@ function drawTollMarkers() {
 function drawTraffic() {
   trafficLayers.forEach(l => map.removeLayer(l));
   trafficLayers = [];
-  [
-    {lat:19.4326,lng:-99.1332,r:6},{lat:20.6597,lng:-103.3496,r:5},
-    {lat:25.6866,lng:-100.3161,r:5},{lat:19.0414,lng:-98.2063,r:4},
-    {lat:19.6010,lng:-99.0503,r:4},{lat:19.5478,lng:-99.2014,r:3},
-  ].forEach(s => {
+  TRAFFIC_SPOTS.forEach(s => {
     const c = L.circle([s.lat,s.lng],{
       radius:s.r*1000,color:'#64748b',fillColor:'#64748b',fillOpacity:0.18,weight:1,
     }).addTo(map);
     c.bindPopup('<p style="font-size:12px"><strong>Trafico detectado</strong></p>');
     trafficLayers.push(c);
   });
+}
+
+function hasTrafficOnRoute(geometry = []) {
+  if (!geometry.length) return false;
+  const sampleStep = Math.max(1, Math.floor(geometry.length / 60));
+  const sampled = geometry.filter((_, index) => index % sampleStep === 0);
+  return sampled.some(([lng, lat]) => TRAFFIC_SPOTS.some(spot => {
+    const dx = lat - spot.lat;
+    const dy = lng - spot.lng;
+    return Math.sqrt(dx * dx + dy * dy) <= (spot.r / 111);
+  }));
 }
 
 function makeIcon(emoji, color) {
@@ -601,6 +617,7 @@ function buildRouteObject(routeData, index, options, origin, dest) {
   const firstC = routeData.geometry[0];
   const lastC  = routeData.geometry[routeData.geometry.length-1];
   const isMX   = isRouteInMexico({lat:firstC[1],lng:firstC[0]}, {lat:lastC[1],lng:lastC[0]});
+  const hasTraffic = hasTrafficOnRoute(routeData.geometry);
 
   if (!isMX) {
     tollNote = 'Casetas no disponibles fuera de México';
@@ -631,9 +648,17 @@ function buildRouteObject(routeData, index, options, origin, dest) {
     timeMin,
     tolls, tollCostMin, tollCostMax, tollCostLabel, tollNote,
     fuelL, fuelCost, riskLevel,
+    hasTraffic,
     algorithm: algos[index]  || `Alternativa ${index}`,
     label:     labels[index] || `Alternativa ${index}`,
   };
+}
+
+function getRouteLengthLabel(index, total) {
+  if (total <= 1) return 'Ruta principal';
+  if (index === 0) return 'Ruta más corta';
+  if (index === total - 1) return 'Ruta más larga';
+  return `Ruta intermedia ${index}`;
 }
 
 // ============================================================
@@ -676,15 +701,20 @@ document.getElementById('searchBtn').addEventListener('click', async () => {
 
     rawRoutes.sort((a,b) => a.durationS - b.durationS);
     let allRoutes = rawRoutes.map((r,i) => buildRouteObject(r, i, options, originCoords, destCoords));
-    if (!options.avoidTolls) {
-      const tollRoutes = allRoutes.filter(r => r.tolls?.length);
-      const freeRoutes = allRoutes.filter(r => !r.tolls?.length);
-      if (tollRoutes.length) {
-        tollRoutes.sort((a, b) => a.timeMin - b.timeMin);
-        freeRoutes.sort((a, b) => a.timeMin - b.timeMin);
-        allRoutes = [...tollRoutes, ...freeRoutes];
-      }
-    }
+    allRoutes.sort((a, b) => {
+      const distDiff = a.totalDist - b.totalDist;
+      if (Math.abs(distDiff) > 1) return distDiff;
+      const tollDiff = (a.tollCostMin || 0) - (b.tollCostMin || 0);
+      if (tollDiff !== 0) return tollDiff;
+      return a.timeMin - b.timeMin;
+    });
+
+    const totalRoutes = allRoutes.length;
+    allRoutes = allRoutes.map((route, index) => ({
+      ...route,
+      rank: index + 1,
+      lengthLabel: getRouteLengthLabel(index, totalRoutes),
+    }));
     allRoutes = allRoutes.map(route => {
       let tolls = route.tolls || [];
       tolls = completeVeracruzCorridor(tolls, originCoords, destCoords);
@@ -750,13 +780,13 @@ function drawRouteOnMap(result, origin, dest) {
     const coords = alt.geometry.map(c => [c[1],c[0]]);
     const style  = altStyles[i] || { color:'#f59e0b', weight:3, opacity:0.6 };
     const line   = L.polyline(coords, style).addTo(map);
-    line.bindTooltip(`${i===0?'🟣':'🟢'} ${alt.label} · ${alt.totalDist} km · ${formatTime(alt.timeMin)}`, { sticky:true });
+    line.bindTooltip(`${i===0?'🟣':'🟢'} ${alt.lengthLabel || alt.label} · ${alt.totalDist} km · ${formatTime(alt.timeMin)}`, { sticky:true });
     routeLayers.push(line);
   });
 
   const mainCoords = main.geometry.map(c => [c[1],c[0]]);
   const mainLine   = L.polyline(mainCoords, { color:'#22d3ee', weight:6, opacity:0.95 }).addTo(map);
-  mainLine.bindTooltip(`🔵 ${main.label} · ${main.totalDist} km · ${formatTime(main.timeMin)}`, { sticky:true });
+  mainLine.bindTooltip(`🔵 ${main.lengthLabel || main.label} · ${main.totalDist} km · ${formatTime(main.timeMin)}`, { sticky:true });
   routeLayers.push(mainLine);
 
   if (locationMarker) map.removeLayer(locationMarker);
@@ -1296,7 +1326,16 @@ function showInfoPanel(result, options) {
   document.getElementById('routeTolls').textContent    = main.tolls?.length ? `${main.tolls.length} casetas · ${main.tollCostLabel}` : (main.tollNote || 'Libre');
   const ff = main.fuelCostFormatted || {text:`$${main.fuelCost} MXN`};
   document.getElementById('routeFuel').textContent = `${ff.text} (${main.fuelL}L)`;
-  document.getElementById('routeTitle').textContent = main.label;
+  const routeTrafficEl = document.getElementById('routeTraffic');
+  if (routeTrafficEl) {
+    routeTrafficEl.textContent = main.hasTraffic ? 'Con tráfico' : 'Sin tráfico';
+    routeTrafficEl.dataset.state = main.hasTraffic ? 'traffic' : 'clear';
+  }
+  document.getElementById('routeTitle').textContent = main.lengthLabel || main.label;
+  const hudRoute = document.getElementById('hudRoute');
+  const hudTolls = document.getElementById('hudTolls');
+  if (hudRoute) hudRoute.textContent = `${main.lengthLabel || main.label} · ${formatTime(main.timeMin)}`;
+  if (hudTolls) hudTolls.textContent = main.tolls?.length ? `${main.tolls.length} · ${main.tollCostLabel}` : 'Libre';
 
   // Alternativas
   const altList = document.getElementById('altRoutesList');
@@ -1306,13 +1345,13 @@ function showInfoPanel(result, options) {
   } else {
     alternatives.forEach((alt, i) => {
       const altFf = alt.fuelCostFormatted || {text:`$${alt.fuelCost} MXN`};
-      const badge = alt.timeMin < main.timeMin ? 'Más rápida' : alt.totalDist < main.totalDist ? 'Más corta' : 'Alternativa';
+      const badge = alt.totalDist < main.totalDist ? 'Más corta' : alt.totalDist > main.totalDist ? 'Más larga' : (alt.timeMin < main.timeMin ? 'Más rápida' : 'Alternativa');
       const badgeClass = badge === 'Más rápida' ? 'fast' : 'cheap';
       const div = document.createElement('div');
       div.className = 'alt-route-item';
       div.innerHTML = `
         <div class="alt-info">
-          <span class="alt-name">${alt.label}</span>
+          <span class="alt-name">${alt.lengthLabel || alt.label}</span>
           <span class="alt-meta">${alt.totalDist} km · ${formatTime(alt.timeMin)} · ${alt.tolls?.length ? `${alt.tolls.length} casetas · ${alt.tollCostLabel}` : 'Sin casetas'}</span>
         </div>
         <span class="alt-badge ${badgeClass}">${badge}</span>`;
@@ -1324,13 +1363,18 @@ function showInfoPanel(result, options) {
         document.getElementById('routeTime').textContent     = formatTime(alt.timeMin);
         document.getElementById('routeTolls').textContent    = alt.tolls?.length ? `${alt.tolls.length} casetas · ${alt.tollCostLabel}` : (alt.tollNote || 'Libre');
         document.getElementById('routeFuel').textContent     = `${altFf.text} (${alt.fuelL}L)`;
-        document.getElementById('routeTitle').textContent    = alt.label;
+        const routeTrafficAlt = document.getElementById('routeTraffic');
+        if (routeTrafficAlt) {
+          routeTrafficAlt.textContent = alt.hasTraffic ? 'Con tráfico' : 'Sin tráfico';
+          routeTrafficAlt.dataset.state = alt.hasTraffic ? 'traffic' : 'clear';
+        }
+        document.getElementById('routeTitle').textContent    = alt.lengthLabel || alt.label;
         document.getElementById('arrivalTime').value = addMinutes(dep2, alt.timeMin);
         document.getElementById('arrivalDate').value = calcArrivalDate(depDateStr, dep2, alt.timeMin);
         updateArrivalBox(alt, dep2, depDateStr);
         updateTollsList(alt);
         highlightRouteOnMap(i);
-        showToast(`${alt.label} seleccionada`);
+        showToast(`${alt.lengthLabel || alt.label} seleccionada`);
       });
       altList.appendChild(div);
     });
@@ -1432,7 +1476,7 @@ function updateArrivalBox(route, dep, depDateStr) {
     <div class="arrival-row"><span>Tiempo de ruta</span><strong>${formatTime(route.timeMin)}</strong></div>
     <div class="arrival-row"><span>Fecha de llegada</span><strong>${fmtDate(arrDateStr)}</strong></div>
     <div class="arrival-row"><span>Hora de llegada</span><strong>${arrTime}</strong></div>
-    <div class="arrival-row"><span>Ruta activa</span><strong>${route.label}</strong></div>
+    <div class="arrival-row"><span>Ruta activa</span><strong>${route.lengthLabel || route.label}</strong></div>
     ${isIntl?'<div style="background:rgba(99,102,241,0.1);border:1px solid #6366f1;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;color:#a5b4fc">Ruta internacional detectada.</div>':''}
     ${route.riskLevel>0.5?'<div style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:8px;padding:8px 10px;margin-top:8px;font-size:12px;color:#fca5a5">La ruta pasa cerca de zonas con alta incidencia delictiva.</div>':''}`;
 }

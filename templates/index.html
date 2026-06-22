@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>GPS MEXICO </title>
+  <title>GPS Mexico</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;600;700&family=Manrope:wght@400;500;600;700;800&family=Syne:wght@500;600;700;800&display=swap" rel="stylesheet"/>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260621p"/>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=League+Spartan:wght@500;600;700;800&family=Dancing+Script:wght@400;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20260622d"/>
 </head>
 <body>
 
@@ -14,11 +14,10 @@
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <div class="logo">
-        
-       
-          
-          <span class="logo-text">RUTA<strong>MX</strong></span>
-        </span>
+        <div class="logo-copy">
+          <span class="logo-text">GPS <strong>Mexico</strong></span>
+          <span class="logo-sub">Rutas y casetas</span>
+        </div>
       </div>
       <button class="close-sidebar" id="closeSidebar">Cerrar</button>
     </div>
@@ -47,10 +46,22 @@
     <div class="input-group">
       <label>Tipo de vehículo</label>
       <div class="vehicle-selector">
-        <button class="vehicle-btn active" data-type="auto">A<span>Auto</span></button>
-        <button class="vehicle-btn" data-type="moto">M<span>Moto</span></button>
-        <button class="vehicle-btn" data-type="camion">C<span>Camión</span></button>
-        <button class="vehicle-btn" data-type="taxi">T<span>Taxi</span></button>
+        <button class="vehicle-btn active" data-type="auto">
+          <span class="vehicle-code">A</span>
+          <span class="vehicle-text"><strong>Auto</strong><small>Viaje privado</small></span>
+        </button>
+        <button class="vehicle-btn" data-type="moto">
+          <span class="vehicle-code">M</span>
+          <span class="vehicle-text"><strong>Moto</strong><small>Ligera y ágil</small></span>
+        </button>
+        <button class="vehicle-btn" data-type="camion">
+          <span class="vehicle-code">C</span>
+          <span class="vehicle-text"><strong>Camión</strong><small>Carga pesada</small></span>
+        </button>
+        <button class="vehicle-btn" data-type="taxi">
+          <span class="vehicle-code">T</span>
+          <span class="vehicle-text"><strong>Taxi</strong><small>Servicio urbano</small></span>
+        </button>
       </div>
     </div>
 
@@ -125,18 +136,22 @@
       <div class="fuel-alert" id="fuelAlert" style="display:none">
         Combustible bajo. Recarga antes de salir.
       </div>
-      <div class="legend legend-sidebar">
-        <div class="legend-item"><span class="legend-dot red"></span> Zona de riesgo</div>
-        <div class="legend-item"><span class="legend-dot orange"></span> Caseta</div>
-        <div class="legend-item"><span class="legend-dot blue"></span> Ruta principal</div>
-        <div class="legend-item"><span class="legend-dot gray"></span> Embotellamiento</div>
-      </div>
     </div>
   </aside>
 
   <!-- ===== MAPA ===== -->
   <div class="map-container">
     <button class="menu-toggle" id="menuToggle">Menú</button>
+    <div class="map-hud">
+      <div class="map-hud-card">
+        <span>Ruta activa</span>
+        <strong id="hudRoute">Sin calcular</strong>
+      </div>
+      <div class="map-hud-card accent">
+        <span>Casetas</span>
+        <strong id="hudTolls">--</strong>
+      </div>
+    </div>
     <div id="map"></div>
 
     <!-- PANEL DE INFORMACIÓN -->
@@ -167,6 +182,11 @@
           <span class="stat-value" id="routeFuel">--</span>
           <span class="stat-label">Combustible</span>
         </div>
+        <div class="stat-card">
+          <span class="stat-icon">TR</span>
+          <span class="stat-value" id="routeTraffic">--</span>
+          <span class="stat-label">Tráfico</span>
+        </div>
       </div>
 
       <!-- RUTAS ALTERNATIVAS -->
@@ -195,8 +215,8 @@
 
   <!-- ===== SCRIPTS ===== -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="{{ url_for('static', filename='js/data.js') }}?v=20260621p"></script>
-  <script src="{{ url_for('static', filename='js/algorithms.js') }}?v=20260621p"></script>
-  <script src="{{ url_for('static', filename='js/app.js') }}?v=20260621p"></script>
+  <script src="{{ url_for('static', filename='js/data.js') }}?v=20260622c"></script>
+  <script src="{{ url_for('static', filename='js/algorithms.js') }}?v=20260622c"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=20260622c"></script>
 </body>
 </html>
